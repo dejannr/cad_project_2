@@ -51,6 +51,13 @@ WOOD_ROD_INSERTION = SOCKET_DEPTH
 WOOD_ROD_LENGTH = MODULE_INNER_WIDTH + 2 * WOOD_ROD_INSERTION
 WOOD_ROD_END_CHAMFER = 0.7
 
+# Flush exterior plugs close the eight exposed sockets at the two ends of the
+# extended assembly.  Their leading ends use the same insertion as the rods.
+SIDE_CAP_DIAMETER = MALE_BOSS_DIAMETER
+SIDE_CAP_RADIUS = SIDE_CAP_DIAMETER / 2.0
+SIDE_CAP_INSERTION = MALE_BOSS_PROTRUSION
+SIDE_CAP_LEAD_CHAMFER = 0.7
+
 assert abs(WOOD_ROD_LENGTH - 288.0) < 1e-9
 
 OUTPUT_DIR = Path(__file__).parent
@@ -205,6 +212,13 @@ def make_wood_rod():
     return rod.faces(">X").edges().chamfer(WOOD_ROD_END_CHAMFER).clean()
 
 
+def make_side_cap():
+    """Create one flush circular plug for an exterior side-panel socket."""
+    cap = _x_cylinder(SIDE_CAP_RADIUS, SIDE_CAP_INSERTION, 0, 0, 0)
+    # Keep the exterior end flat and flush; ease only the insertion end.
+    return cap.faces(">X").edges().chamfer(SIDE_CAP_LEAD_CHAMFER).clean()
+
+
 def make_assembly():
     """Return a positioned assembly: left side, rotated identical right, top."""
     side_panel = make_side_panel()
@@ -226,6 +240,7 @@ def make_extended_assembly():
     side_panel = make_side_panel()
     top_panel = make_top_panel()
     wood_rod = make_wood_rod()
+    side_cap = make_side_cap()
     side_pitch = MODULE_OUTER_WIDTH - SIDE_PANEL_THICKNESS
     side_positions = [index * side_pitch for index in range(4)]
 
@@ -257,6 +272,22 @@ def make_extended_assembly():
                 name=f"rod_module_{module_index}_{rod_index}",
                 color=cq.Color(0.45, 0.25, 0.10),
             )
+
+    # Close the four exposed sockets on Side A's left face and Side D's right
+    # face.  The same plug is rotated for the right-hand exterior face.
+    for cap_index, y_center in enumerate(CONNECTION_Y, start=1):
+        assembly.add(
+            side_cap.translate((side_positions[0], y_center, CONNECTION_Z)),
+            name=f"left_exterior_cap_{cap_index}",
+            color=cq.Color(0.20, 0.20, 0.20),
+        )
+        assembly.add(
+            side_cap.rotate((0, 0, 0), (0, 0, 1), 180).translate(
+                (side_positions[3] + SIDE_PANEL_THICKNESS, y_center, CONNECTION_Z)
+            ),
+            name=f"right_exterior_cap_{cap_index}",
+            color=cq.Color(0.20, 0.20, 0.20),
+        )
     return assembly
 
 
@@ -563,6 +594,7 @@ def report_extended_assembly():
     side_panel = make_side_panel()
     top_panel = make_top_panel()
     wood_rod = make_wood_rod()
+    side_cap = make_side_cap()
     tolerance = 1e-6
     side_pitch = MODULE_OUTER_WIDTH - SIDE_PANEL_THICKNESS
     side_positions = [index * side_pitch for index in range(4)]
@@ -577,13 +609,22 @@ def report_extended_assembly():
             wood_rod.translate((rod_start_x, y_center, CONNECTION_Z))
             for y_center in CONNECTION_Y
         )
+    caps = []
+    for y_center in CONNECTION_Y:
+        caps.append(side_cap.translate((side_positions[0], y_center, CONNECTION_Z)))
+        caps.append(
+            side_cap.rotate((0, 0, 0), (0, 0, 1), 180).translate(
+                (side_positions[3] + SIDE_PANEL_THICKNESS, y_center, CONNECTION_Z)
+            )
+        )
 
     compound = cq.Compound.makeCompound(
-        [*(side.val() for side in sides), top.val(), *(rod.val() for rod in rods)]
+        [*(side.val() for side in sides), top.val(), *(rod.val() for rod in rods), *(cap.val() for cap in caps)]
     )
     bounds = compound.BoundingBox()
     expected_width = 3 * MODULE_OUTER_WIDTH - 2 * SIDE_PANEL_THICKNESS
     rod_bounds = wood_rod.val().BoundingBox()
+    cap_bounds = side_cap.val().BoundingBox()
     rod_dimensions_ok = (
         abs(rod_bounds.xlen - WOOD_ROD_LENGTH) <= tolerance
         and abs(rod_bounds.ylen - WOOD_ROD_DIAMETER) <= tolerance
@@ -626,19 +667,33 @@ def report_extended_assembly():
         rods[rod_index].val().intersect(sides[side_index].val()).Volume()
         for rod_index, side_index in ((0, 0), (3, 1), (4, 2), (7, 3))
     )
-    valid = all(shape.val().isValid() for shape in [*sides, top, *rods])
+    cap_interference = sum(
+        cap.val().intersect(sides[0 if index % 2 == 0 else 3].val()).Volume()
+        for index, cap in enumerate(caps)
+    )
+    cap_fit_ok = (
+        len(caps) == 8
+        and abs(cap_bounds.xlen - SIDE_CAP_INSERTION) <= tolerance
+        and abs(cap_bounds.ylen - SIDE_CAP_DIAMETER) <= tolerance
+        and abs(cap_bounds.zlen - SIDE_CAP_DIAMETER) <= tolerance
+    )
+    valid = all(shape.val().isValid() for shape in [*sides, top, *rods, *caps])
 
     print(f"Extended assembly width: {bounds.xlen:.3f} mm (expected {expected_width:.3f} mm)")
-    print("Extended component counts: sides=4, top=1, wood_rods=8")
+    print("Extended component counts: sides=4, top=1, wood_rods=8, side_caps=8")
     print(f"Wood rod dimensions: {'PASS' if rod_dimensions_ok else 'FAIL'} (Ø20.000 x 288.000 mm)")
     print(f"Rod insertion at every end: {'PASS' if insertion_ok else 'FAIL'} (4.000 mm)")
     print(f"Rod/socket radial clearance: {RADIAL_CLEARANCE:.3f} mm")
     print(f"Rod axes use Y={CONNECTION_Y}, Z={CONNECTION_Z:.3f}: {'PASS' if rod_alignment_ok else 'FAIL'}")
+    print(
+        f"Exterior socket caps: {'PASS' if cap_fit_ok else 'FAIL'} "
+        f"(8 flush Ø{SIDE_CAP_DIAMETER:.3f} plugs, insertion {SIDE_CAP_INSERTION:.3f} mm)"
+    )
     print(f"Extended solids valid: {'PASS' if valid else 'FAIL'}")
     print(
         "Extended unintended interference: "
-        f"{'NO' if top_interference <= tolerance and rod_interference <= tolerance else 'YES'} "
-        f"(top={top_interference:.6f}, rods={rod_interference:.6f} mm^3)"
+        f"{'NO' if top_interference <= tolerance and rod_interference <= tolerance and cap_interference <= tolerance else 'YES'} "
+        f"(top={top_interference:.6f}, rods={rod_interference:.6f}, caps={cap_interference:.6f} mm^3)"
     )
 
 
@@ -657,12 +712,16 @@ def export_parts(side_panel, top_panel, assembly):
     assembly.save(str(OUTPUT_DIR / "assembly.step"), mode="default")
 
 
-def export_extended_parts(wood_rod, extended_assembly):
-    """Write the single reusable dowel and the complete modular assembly."""
+def export_extended_parts(wood_rod, side_cap, extended_assembly):
+    """Write reusable dowel/cap parts and the complete modular assembly."""
     rod_assembly = cq.Assembly(name="wood_rod_export")
     rod_assembly.add(wood_rod, name="wood_rod", color=cq.Color(0.45, 0.25, 0.10))
     rod_assembly.save(str(OUTPUT_DIR / "wood_rod.step"), mode="default")
     exporters.export(wood_rod, str(OUTPUT_DIR / "wood_rod.stl"))
+    cap_assembly = cq.Assembly(name="side_cap_export")
+    cap_assembly.add(side_cap, name="side_cap", color=cq.Color(0.20, 0.20, 0.20))
+    cap_assembly.save(str(OUTPUT_DIR / "side_cap.step"), mode="default")
+    exporters.export(side_cap, str(OUTPUT_DIR / "side_cap.stl"))
     extended_assembly.save(str(OUTPUT_DIR / "extended_assembly.step"), mode="default")
 
 
@@ -672,11 +731,12 @@ def main():
     top_panel = make_top_panel()
     assembly = make_assembly()
     wood_rod = make_wood_rod()
+    side_cap = make_side_cap()
     extended_assembly = make_extended_assembly()
     report_fit(side_panel, top_panel)
     report_extended_assembly()
     export_parts(side_panel, top_panel, assembly)
-    export_extended_parts(wood_rod, extended_assembly)
+    export_extended_parts(wood_rod, side_cap, extended_assembly)
     show(assembly)
 
 
