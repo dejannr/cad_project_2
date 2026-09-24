@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+.venv/
+
+# CAD exports are generated from the parametric Python source.
+*.step
+*.stl
