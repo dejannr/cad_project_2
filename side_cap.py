@@ -6,4 +6,4 @@ from enclosure_frame import make_side_cap
 
 
 side_cap = make_side_cap()
-show(side_cap, names=["side_cap"], colors=["dimgray"])
+show(side_cap, names=["side_cap"], colors=["black"])

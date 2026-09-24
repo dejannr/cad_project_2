@@ -279,14 +279,14 @@ def make_extended_assembly():
         assembly.add(
             side_cap.translate((side_positions[0], y_center, CONNECTION_Z)),
             name=f"left_exterior_cap_{cap_index}",
-            color=cq.Color(0.20, 0.20, 0.20),
+            color=cq.Color(0.08, 0.08, 0.08),
         )
         assembly.add(
             side_cap.rotate((0, 0, 0), (0, 0, 1), 180).translate(
                 (side_positions[3] + SIDE_PANEL_THICKNESS, y_center, CONNECTION_Z)
             ),
             name=f"right_exterior_cap_{cap_index}",
-            color=cq.Color(0.20, 0.20, 0.20),
+            color=cq.Color(0.08, 0.08, 0.08),
         )
     return assembly
 
@@ -719,7 +719,7 @@ def export_extended_parts(wood_rod, side_cap, extended_assembly):
     rod_assembly.save(str(OUTPUT_DIR / "wood_rod.step"), mode="default")
     exporters.export(wood_rod, str(OUTPUT_DIR / "wood_rod.stl"))
     cap_assembly = cq.Assembly(name="side_cap_export")
-    cap_assembly.add(side_cap, name="side_cap", color=cq.Color(0.20, 0.20, 0.20))
+    cap_assembly.add(side_cap, name="side_cap", color=cq.Color(0.08, 0.08, 0.08))
     cap_assembly.save(str(OUTPUT_DIR / "side_cap.step"), mode="default")
     exporters.export(side_cap, str(OUTPUT_DIR / "side_cap.stl"))
     extended_assembly.save(str(OUTPUT_DIR / "extended_assembly.step"), mode="default")
